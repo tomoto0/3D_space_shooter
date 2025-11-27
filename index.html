@@ -2256,6 +2256,12 @@
                 this.barrelRollProgress = 0;
                 this.invincible = false;
                 
+                // ダメージ後の無敵時間（0.3秒）
+                this.invincibleTimer = 0;
+                this.invincibleDuration = 0.3; // 0.3秒間無敵
+                this.blinkTimer = 0;
+                this.blinkInterval = 0.1; // 0.1秒ごとに点滅
+                
                 // Bomb
                 this.bombCount = 3;
                 this.maxBombs = 3;
@@ -2708,6 +2714,9 @@
             update(deltaTime, input, elapsedTime) {
                 if (!this.mesh) return;
                 
+                // ダメージ後の無敵時間処理
+                this.updateInvincibility(deltaTime);
+                
                 // Get movement input
                 const movement = input.getMovementVector();
                 
@@ -2770,6 +2779,35 @@
                 }
             }
 
+            updateInvincibility(deltaTime) {
+                // 無敵タイマーの処理
+                if (this.invincibleTimer > 0) {
+                    this.invincibleTimer -= deltaTime;
+                    this.invincible = true;
+                    
+                    // 点滅エフェクト
+                    this.blinkTimer += deltaTime;
+                    if (this.blinkTimer >= this.blinkInterval) {
+                        this.blinkTimer = 0;
+                        // メッシュの表示/非表示を切り替えて点滅
+                        this.mesh.visible = !this.mesh.visible;
+                    }
+                    
+                    // 無敵時間終了
+                    if (this.invincibleTimer <= 0) {
+                        this.invincibleTimer = 0;
+                        this.invincible = false;
+                        this.mesh.visible = true; // 必ず表示状態に戻す
+                    }
+                }
+            }
+
+            startInvincibility() {
+                // ダメージを受けた時に無敵状態を開始
+                this.invincibleTimer = this.invincibleDuration;
+                this.blinkTimer = 0;
+            }
+
             updateBarrelRoll(deltaTime, input) {
                 // Cooldown
                 if (this.barrelRollCooldown > 0) {
@@ -2803,7 +2841,10 @@
                     if (this.barrelRollProgress >= 1) {
                         this.isBarrelRolling = false;
                         this.barrelRollProgress = 0;
-                        this.invincible = false;
+                        // ダメージ無敵タイマーが残っている場合は無敵を維持
+                        if (this.invincibleTimer <= 0) {
+                            this.invincible = false;
+                        }
                         this.mesh.rotation.z = 0;
                     }
                 }
@@ -2910,6 +2951,9 @@
                 
                 // Remaining damage to health
                 this.health -= amount;
+                
+                // ダメージを受けたら2秒間の無敵状態を開始
+                this.startInvincibility();
                 
                 if (this.health <= 0) {
                     this.health = 0;
@@ -6417,7 +6461,7 @@
             getCollisionRadius() { return 18; }
             
             takeDamage(amount, fromBomb = false) {
-                const actualDamage = fromBomb ? Math.min(amount, 500) : amount;
+                const actualDamage = fromBomb ? Math.min(amount, 4000) : amount;
                 this.health -= actualDamage;
                 this.flashDamage();
                 
@@ -6447,7 +6491,7 @@
                 this.specialAttackTimer += deltaTime;
                 
                 // 3D空間を縦横無尽に動く
-                if (this.moveTimer > 2.5) {
+                if (this.moveTimer > 4) {
                     this.movePhase = (this.movePhase + 1) % 6;
                     switch(this.movePhase) {
                         case 0: // 右上へ
@@ -6840,7 +6884,7 @@
             getCollisionRadius() { return 22; }
             
             takeDamage(amount, fromBomb = false) {
-                const actualDamage = fromBomb ? Math.min(amount, 500) : amount;
+                const actualDamage = fromBomb ? Math.min(amount, 4000) : amount;
                 this.health -= actualDamage;
                 this.flashDamage();
                 
@@ -6870,8 +6914,8 @@
                 this.specialAttackTimer += deltaTime;
                 
                 // 複雑な3D移動パターン
-                if (this.moveTimer > 3) {
-                    this.movePattern = (this.movePattern + 1) % 7;
+                if (this.moveTimer > 6) {
+                    this.movePattern = (this.movePattern + 1) % 8;
                     this.moveTimer = 0;
                 }
                 
@@ -6888,38 +6932,43 @@
                         this.position.y = Math.sin(patternTime * 2) * 25;
                         this.position.z = -50 + Math.sin(patternTime) * 15;
                         break;
-                    case 2: // プレイヤーに突進
-                        if (this.player) {
-                            const targetZ = Math.max(-40, this.player.position.z - 30);
-                            this.targetPos.set(this.player.position.x, this.player.position.y, targetZ);
-                            this.position.lerp(this.targetPos, deltaTime * 2);
-                        }
-                        break;
-                    case 3: // 上下に大きく揺れながら横移動
+                    case 2: // 上下に大きく揺れながら横移動
                         this.position.x = Math.sin(patternTime * 1.5) * 40;
                         this.position.y = Math.sin(patternTime * 3) * 20;
                         this.position.z = -55;
                         break;
-                    case 4: // 回避しながら後退
+                    case 3: // 回避しながら後退
                         this.position.x = Math.sin(patternTime * 2) * 30;
                         this.position.y = Math.cos(patternTime * 1.5) * 10;
                         this.position.z = -80 + Math.sin(patternTime * 0.5) * 10;
                         break;
-                    case 5: // 遠くへ素早く逃げる
+                    case 4: // 画面最奥へ素早く逃げる
                         this.targetPos.set(
                             (Math.random() - 0.5) * 50,
                             (Math.random() - 0.5) * 25,
-                            -130
+                            -200
                         );
-                        this.position.lerp(this.targetPos, deltaTime * 4.5);
+                        this.position.lerp(this.targetPos, deltaTime * 5.0);
+                        break;
+                    case 5: // 最奥で待機
+                        this.position.x = Math.sin(patternTime * 0.5) * 30;
+                        this.position.y = Math.cos(patternTime * 0.5) * 15;
+                        this.position.z = -180;
                         break;
                     case 6: // 逃げた後に高速で戻ってくる
                         this.targetPos.set(
                             (Math.random() - 0.5) * 35,
                             (Math.random() - 0.5) * 15,
-                            -50
+                            -55
                         );
                         this.position.lerp(this.targetPos, deltaTime * 3.0);
+                        break;
+                    case 7: // プレイヤーに突進（稀に）
+                        if (this.player) {
+                            const targetZ = Math.max(-45, this.player.position.z - 30);
+                            this.targetPos.set(this.player.position.x, this.player.position.y, targetZ);
+                            this.position.lerp(this.targetPos, deltaTime * 1.5);
+                        }
                         break;
                 }
                 
@@ -7268,7 +7317,7 @@
             getCollisionRadius() { return 20; }
             
             takeDamage(amount, fromBomb = false) {
-                const actualDamage = fromBomb ? Math.min(amount, 500) : amount;
+                const actualDamage = fromBomb ? Math.min(amount, 4000) : amount;
                 this.health -= actualDamage;
                 this.flashDamage();
                 
@@ -7296,7 +7345,7 @@
                 this.tentacleAttackTimer += deltaTime;
                 
                 // 複雑な3D移動
-                if (this.moveTimer > 3) {
+                if (this.moveTimer > 4) {
                     this.movePhase = (this.movePhase + 1) % 8;
                     this.moveTimer = 0;
                 }
@@ -7698,7 +7747,7 @@
             getCollisionRadius() { return 22; }
             
             takeDamage(amount, fromBomb = false) {
-                const actualDamage = fromBomb ? Math.min(amount, 500) : amount;
+                const actualDamage = fromBomb ? Math.min(amount, 4000) : amount;
                 this.health -= actualDamage;
                 this.flashDamage();
                 
@@ -7783,7 +7832,7 @@
                     }
                     
                     // 突進準備（一定時間ごと）
-                    if (this.chargeTimer > 10 && this.player && phase !== 1) {
+                    if (this.chargeTimer > 25 && this.player && phase !== 1) {
                         this.isCharging = true;
                         this.chargeTimer = 0;
                         this.targetPos.copy(this.player.position);
@@ -8396,7 +8445,7 @@
             getCollisionRadius() { return 25; }
             
             takeDamage(amount, fromBomb = false) {
-                const actualDamage = fromBomb ? Math.min(amount, 500) : amount;
+                const actualDamage = fromBomb ? Math.min(amount, 4000) : amount;
                 this.health -= actualDamage;
                 this.flashDamage();
                 
@@ -9349,6 +9398,11 @@
                 this.sfxVolume = 0.7;
                 this.musicVolume = 0.4;
                 
+                // BGMトラックを事前に初期化
+                this.bgmTracks = null;
+                this.currentBGM = null;
+                this.bgmElement = null;
+                
                 try {
                     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     this.masterGain = this.audioContext.createGain();
@@ -9364,6 +9418,9 @@
                     this.musicGain.gain.value = this.musicVolume;
                     
                     this.initialized = true;
+                    
+                    // BGM初期化
+                    this.initBGM();
                 } catch (e) {
                     console.warn('Web Audio API not supported');
                     this.initialized = false;
@@ -9376,26 +9433,36 @@
                 }
             }
 
-            // Laser shot sound
+            // Laser shot sound - ピュンピュン高めの発射音
             playLaser() {
                 if (!this.initialized || !this.enabled) return;
                 this.resume();
                 
                 const osc = this.audioContext.createOscillator();
+                const osc2 = this.audioContext.createOscillator();
                 const gain = this.audioContext.createGain();
                 
                 osc.connect(gain);
+                osc2.connect(gain);
                 gain.connect(this.sfxGain);
                 
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(880, this.audioContext.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(220, this.audioContext.currentTime + 0.1);
+                // 高い「ピュン」音
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(2400, this.audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.audioContext.currentTime + 0.08);
                 
-                gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+                // 倍音を追加してシャープな音に
+                osc2.type = 'square';
+                osc2.frequency.setValueAtTime(3200, this.audioContext.currentTime);
+                osc2.frequency.exponentialRampToValueAtTime(1200, this.audioContext.currentTime + 0.06);
+                
+                gain.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.08);
                 
                 osc.start();
-                osc.stop(this.audioContext.currentTime + 0.1);
+                osc2.start();
+                osc.stop(this.audioContext.currentTime + 0.08);
+                osc2.stop(this.audioContext.currentTime + 0.08);
             }
 
             // Explosion sound
@@ -9785,7 +9852,105 @@
 
             toggleSound() {
                 this.enabled = !this.enabled;
+                
+                // BGMのON/OFF切り替え
+                if (this.bgmElement) {
+                    if (this.enabled) {
+                        // 音が有効になったらBGMを再開
+                        if (this.currentBGM) {
+                            this.bgmElement.play().catch(() => {});
+                        }
+                    } else {
+                        // 音が無効になったらBGMを一時停止
+                        this.bgmElement.pause();
+                    }
+                }
+                
                 return this.enabled;
+            }
+            
+            // ========================================
+            // BGM System - ローカルMP3ファイルを使用
+            // ========================================
+            initBGM() {
+                // ローカルのBGMファイル
+                this.bgmTracks = {
+                    1: 'audio/bgm_wave1.mp3',
+                    2: 'audio/bgm_wave2.mp3',
+                    3: 'audio/bgm_wave3.mp3',
+                    4: 'audio/bgm_wave4.mp3',
+                    5: 'audio/bgm_wave5.mp3'
+                };
+                
+                this.currentBGM = null;
+                this.currentWaveBGM = 0;
+                this.bgmElement = document.createElement('audio');
+                this.bgmElement.loop = true;
+                this.bgmElement.volume = this.musicVolume * this.masterVolume;
+                document.body.appendChild(this.bgmElement);
+                console.log('BGM system initialized with local files');
+            }
+            
+            playBGM(wave) {
+                if (!this.enabled) return;
+                this.resume();
+                
+                // BGMが初期化されていなければ初期化
+                if (!this.bgmTracks || !this.bgmElement) {
+                    this.initBGM();
+                }
+                
+                const trackUrl = this.bgmTracks[wave] || this.bgmTracks[1];
+                
+                console.log('Playing BGM for wave:', wave, trackUrl);
+                
+                // 同じトラックが再生中なら何もしない
+                if (this.currentBGM === trackUrl && !this.bgmElement.paused) {
+                    return;
+                }
+                
+                this.currentBGM = trackUrl;
+                this.currentWaveBGM = wave;
+                this.bgmElement.src = trackUrl;
+                this.bgmElement.volume = this.musicVolume * this.masterVolume;
+                
+                // 再生
+                const playPromise = this.bgmElement.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        console.log('BGM started for wave:', wave);
+                    }).catch(e => {
+                        console.log('BGM autoplay prevented:', e.message);
+                    });
+                }
+            }
+            
+            stopBGM() {
+                if (this.bgmElement) {
+                    this.bgmElement.pause();
+                    this.bgmElement.currentTime = 0;
+                    this.currentBGM = null;
+                    this.currentWaveBGM = 0;
+                }
+            }
+            
+            pauseBGM() {
+                if (this.bgmElement) {
+                    this.bgmElement.pause();
+                }
+            }
+            
+            resumeBGM() {
+                if (this.bgmElement && this.currentBGM && this.enabled) {
+                    this.bgmElement.play().catch(() => {});
+                }
+            }
+            
+            setBGMVolume(value) {
+                this.musicVolume = value;
+                if (this.bgmElement) {
+                    this.bgmElement.volume = value * this.masterVolume;
+                }
             }
         }
 
@@ -9905,6 +10070,11 @@
                 this.totalSpawned = 0;
                 this.wavePhase = 0;
                 this.phaseTimer = 0;
+                
+                // ステージBGMを再生
+                if (this.audioManager) {
+                    this.audioManager.playBGM(waveNumber);
+                }
                 
                 // Wave 5以降は異次元空間の背景に変更
                 if (waveNumber >= 5 && this.scene) {
@@ -10174,6 +10344,11 @@
                 const text = document.getElementById('announcement-text');
                 const sub = document.getElementById('announcement-sub');
                 
+                // BGMを停止
+                if (this.audioManager) {
+                    this.audioManager.stopBGM();
+                }
+                
                 text.textContent = 'CONGRATULATIONS!';
                 sub.textContent = 'YOU SAVED THE GALAXY!';
                 
@@ -10342,8 +10517,12 @@
                         if (this.boss && this.boss.alive) {
                             const dist = bomb.position.distanceTo(this.boss.position);
                             if (dist < 120 + this.boss.getCollisionRadius()) {
-                                const killed = this.boss.takeDamage(700, true);
-                                console.log('Boss hit by timeout bomb! Damage: 700, Killed:', killed);
+                                const killed = this.boss.takeDamage(4000, true);
+                                console.log('Boss hit by timeout bomb! Damage: 4000, Killed:', killed);
+                                
+                                // UIを更新してボスのHPバーを反映
+                                this.updateUI();
+                                
                                 if (this.vfxManager) {
                                     this.vfxManager.createExplosion(this.boss.position.clone(), 'large', 0xff00ff);
                                 }
@@ -10581,8 +10760,8 @@
                                     this.vfxManager.createKillMarker(enemy.position.clone());
                                 }
                                 
-                                // 7%の確率でHP回復アイテムドロップ
-                                if (Math.random() < 0.07) {
+                                // 3.5%の確率でHP回復アイテムドロップ
+                                if (Math.random() < 0.035) {
                                     this.spawnHealthItem(enemy.position.clone());
                                 }
                             }
@@ -11254,14 +11433,17 @@
                         }
                     });
                     
-                    // ボスへのダメージ処理（500ダメージ）
+                    // ボスへのダメージ処理（4000ダメージ）
                     if (this.boss && this.boss.alive) {
                         const dist = bomb.position.distanceTo(this.boss.position);
                         const hitRange = bomb.explosionRadius + this.boss.getCollisionRadius();
                         console.log('Boss distance:', dist, 'Hit range:', hitRange, 'Boss HP:', this.boss.health);
                         if (dist < hitRange) {
-                            const killed = this.boss.takeDamage(700, true); // fromBomb = true
-                            console.log('Boss hit by bomb! Damage: 700, Boss HP after:', this.boss.health, 'Killed:', killed);
+                            const killed = this.boss.takeDamage(4000, true); // fromBomb = true
+                            console.log('Boss hit by bomb! Damage: 4000, Boss HP after:', this.boss.health, 'Killed:', killed);
+                            
+                            // UIを更新してボスのHPバーを反映
+                            this.updateUI();
                             
                             if (this.vfxManager) {
                                 this.vfxManager.createExplosion(this.boss.position.clone(), 'large', 0xff00ff);
@@ -12100,6 +12282,11 @@
 
             gameOver() {
                 this.state = GameState.GAME_OVER;
+                
+                // BGMを停止
+                if (this.audioManager) {
+                    this.audioManager.stopBGM();
+                }
                 
                 // Hide game UI
                 document.getElementById('crosshair').classList.remove('visible');
